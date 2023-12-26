@@ -1,34 +1,21 @@
 version: '3.1'
 services:
-  web:
+  odoo:
     image: odoo:17.0
-    depends_on:
-      - db
     ports:
-      - "8069:8069"
+      - '808:8069'
     volumes:
-      - odoo-web-data:/var/lib/odoo
-      - ./config:/etc/odoo
+      - 'odoo_data:/bitnami/odoo'
       - ./addons:/mnt/extra-addons
     environment:
-      - PASSWORD_FILE=/run/secrets/postgresql_password
-    secrets:
-      - postgresql_password
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_PASSWORD_FILE=/run/secrets/postgresql_password
-      - POSTGRES_USER=odoo
-      - PGDATA=/var/lib/postgresql/data/pgdata
-    volumes:
-      - odoo-db-data:/var/lib/postgresql/data/pgdata
-    secrets:
-      - postgresql_password
+      # ALLOW_EMPTY_PASSWORD is recommended only for development.
+      - ALLOW_EMPTY_PASSWORD=no
+      #- ODOO_DATABASE_HOST=34.95.178.203
+      - ODOO_DATABASE_HOST=10.68.48.9
+      - ODOO_DATABASE_PORT_NUMBER=5432
+      - ODOO_DATABASE_USER=odoo
+      - ODOO_DATABASE_NAME=odoo
+      - ODOO_DATABASE_PASSWORD=Naipa1Xo
 volumes:
-  odoo-web-data:
-  odoo-db-data:
-
-secrets:
-  postgresql_password:
-    file: odoo_pg_pass
+  odoo_data:
+    driver: local

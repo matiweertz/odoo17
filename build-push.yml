@@ -1,0 +1,87 @@
+name: build and push
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: odoo-erp-calendar # TODO: update Google Cloud project id
+  SERVICE: storylinepi-aden-org # TODO: update Cloud Run service name
+  REGION: southamerica-east1 # TODO: update Cloud Run service region
+  IMAGE_NAME: fad-desarollo/storylinepi.aden.org
+  # IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  create-docker-image:
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+  
+    name: Build and push the Docker image to ECR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+
+      - name: Log in to GHCR
+        env:
+            REGISTRY: ghcr.io #create env called REGISTRY
+            SERVICE: storylinepi-aden-org #create env called REGISTRY
+            REGION: southamerica-east1 #create env called REGISTRY
+        uses: docker/login-action@v2
+        with:
+            registry: ${{ env.REGISTRY }} #parse REGISTRY env value to here. Make sure it is correctly stating ghcr.io
+            username: ${{ github.actor }} #this will be our github account
+            password: ${{ secrets.GITHUB_TOKEN }} #parse the value of repository secret called CR_PAT that we have created earlier
+            
+      - name: Google Auth
+        id: auth
+        uses: 'google-github-actions/auth@v0'
+        with:
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' # e.g. - projects/195016059357/locations/global/workloadIdentityPools/github-auth/providers/github-action
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}' # e.g. - github-actions@odoo-erp-calendar.iam.gserviceaccount.com
+
+      - name: Build Docker Image #create env called IMAGE_NAME consisted of actual name of Docker Image after we build
+        run: docker build -t $IMAGE_NAME:latest . #build the docker image
+    
+      - name: Automatic Tagging of Releases
+        id: increment-git-tag
+        run: |
+          bash ./scripts/git_update.sh -v major
+
+      - name: Configure Docker Client
+        run:  |-
+          gcloud auth configure-docker --quiet #authenticate to gcr
+          gcloud auth configure-docker southamerica-east1-docker.pkg.dev --quiet
+      
+     # - name: Push Docker Image to Container Registry (GCR)
+      #  env:
+       #   GIT_TAG: ${{ steps.increment-git-tag.outputs.git-tag }}
+        #run: |-
+         # docker tag $IMAGE_NAME:latest gcr.io/$PROJECT_ID/$IMAGE_NAME:latest
+         # docker tag $IMAGE_NAME:latest gcr.io/$PROJECT_ID/$IMAGE_NAME:$GIT_TAG
+         # docker push gcr.io/$PROJECT_ID/$IMAGE_NAME:latest
+         # docker push gcr.io/$PROJECT_ID/$IMAGE_NAME:$GIT_TAG
+
+      - name: Push Docker Image to Artifact Registry
+        env:
+          GIT_TAG: ${{ steps.increment-git-tag.outputs.git-tag }}
+        run: |-
+          docker tag $IMAGE_NAME:latest southamerica-east1-docker.pkg.dev/$PROJECT_ID/images/$IMAGE_NAME:latest
+          docker tag $IMAGE_NAME:latest southamerica-east1-docker.pkg.dev/$PROJECT_ID/images/$IMAGE_NAME:$GIT_TAG
+          docker push southamerica-east1-docker.pkg.dev/$PROJECT_ID/images/$IMAGE_NAME:latest
+          docker push southamerica-east1-docker.pkg.dev/$PROJECT_ID/images/$IMAGE_NAME:$GIT_TAG
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v0
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          # NOTE: If required, update to the appropriate source folder
+          source: ./
+
+      # If required, use the Cloud Run url output in later steps
+      - name: Show Output
+        run: echo ${{ steps.deploy.outputs.url }}
